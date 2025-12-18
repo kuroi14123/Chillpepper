@@ -194,15 +194,23 @@
       return clamped.distanceToSquared(p) <= (sR*sR);
     }
 
-    // ---------- camera follow (uses yaw/pitch) ----------
-    const camTarget = new THREE.Vector3();
-    function updateCamera(dt){
-      camTarget.copy(player.position);
-      const back = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
-      const desired = camTarget.clone().add(back.multiplyScalar(10)).add(new THREE.Vector3(0, 6.5, 0));
-      camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
-    }
+    // ---------- FPS camera (true first-person, CS-style) ----------
+function updateCamera(){
+  // camera == player (eye position)
+  camera.position.copy(player.position);
+  camera.position.y += 0.25; // eye height
+  camera.rotation.order = 'YXZ';
+  camera.rotation.x = pitch;
+  camera.rotation.y = yaw;
+  camera.rotation.z = 0;
+}
+
+// movement basis from yaw (CS-style)
+function getMoveBasis(){
+  const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).negate();
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  return { forward, right };
+}
 
     // ---------- loop ----------
     let last = performance.now();
@@ -222,12 +230,20 @@
         const down = keys.has("ArrowDown") || keys.has("KeyS");
         const left = keys.has("ArrowLeft") || keys.has("KeyA");
         const right = keys.has("ArrowRight") || keys.has("KeyD");
-        const ix = (right - left);
-        const iz = (down - up);
-        const targetVx = ix * state.speed;
-        const targetVz = iz * state.speed;
+        const { forward, right: rvec } = getMoveBasis();
+        const wish = new THREE.Vector3();
+        if(up) wish.add(forward);
+        if(down) wish.sub(forward);
+        if(left) wish.sub(rvec);
+        if(right) wish.add(rvec);
+        if(wish.lengthSq() > 0) wish.normalize();
+
+        const targetVx = wish.x * state.speed;
+        const targetVz = wish.z * state.speed;
+
         state.vx += (targetVx - state.vx) * Math.min(1, state.accel*dt);
         state.vz += (targetVz - state.vz) * Math.min(1, state.accel*dt);
+
         player.position.x += state.vx * dt;
         player.position.z += state.vz * dt;
         player.position.x = Math.max(-18, Math.min(18, player.position.x));
@@ -253,7 +269,7 @@
         if(coins.length === 0){ state.win = true; state.running = false; msgEl.style.display = "block"; msgEl.querySelector("h1").textContent = "CLEAR ✨"; msgEl.querySelector("p").innerHTML = "コイン回収コンプリート<br><kbd>Space</kbd> でリトライ"; }
       }
 
-      updateCamera(dt);
+      updateCamera();
       renderer.render(scene, camera);
       requestAnimationFrame(step);
     }
@@ -262,9 +278,10 @@
     addEventListener("resize", ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
     // ---- minimal runtime checks (pseudo-tests) ----
-    console.assert(typeof THREE !== 'undefined', 'THREE should be loaded');
-    console.assert(renderer.domElement instanceof HTMLCanvasElement, 'Canvas exists');
-  </script>
-</body>
+console.assert(typeof THREE !== 'undefined', 'THREE should be loaded');
+console.assert(renderer.domElement instanceof HTMLCanvasElement, 'Canvas exists');
+console.assert(Math.abs(PITCH_MAX - THREE.MathUtils.degToRad(89)) < 1e-6, 'Pitch limit should be ±89deg');
+console.assert(typeof getMoveBasis === 'function', 'FPS movement basis exists');
+
 </html>
 
