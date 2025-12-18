@@ -120,10 +120,11 @@ function start(){
 addEventListener('click',start);
 addEventListener('keydown',e=>{if(e.code==='Space')start();});
 
-// movement params (CSっぽい加速)
+// movement params (CS / Quake style)
 const MOVE = {
-  maxSpeed: 7.0,
-  accel: 28.0,
+  maxSpeed: 7.0,      // 地上基準速度
+  accel: 28.0,        // 地上加速
+  airAccel: 45.0,     // 空中加速（エアストレイフ）
   friction: 10.0,
   gravity: 18.0,
   jump: 6.5
@@ -140,25 +141,65 @@ requestAnimationFrame(loop);
   const dt=Math.min(0.05,(now-last)/1000); last=now;
 
   if(started){
-    const dir = new THREE.Vector3(
-      (keys.KeyD?1:0)-(keys.KeyA?1:0),
-      0,
-      (keys.KeyS?1:0)-(keys.KeyW?1:0)
-    );
-    if(dir.lengthSq()>0){
-      dir.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
-      player.vel.x = dir.x*6;
-      player.vel.z = dir.z*6;
+    // === INPUT (WASD) ===
+    const ix = (keys.KeyD?1:0)-(keys.KeyA?1:0);
+    const iz = (keys.KeyS?1:0)-(keys.KeyW?1:0);
+
+    // view-based wish direction
+    let wish = new THREE.Vector3(ix,0,iz);
+    if(wish.lengthSq()>0) wish.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+
+    // current horizontal velocity
+    const vel = new THREE.Vector3(player.vel.x,0,player.vel.z);
+    const speed = vel.length();
+
+    if(player.onGround){
+      // ground friction
+      if(speed>0 && wish.lengthSq()===0){
+        const drop = MOVE.friction * dt * MOVE.maxSpeed;
+        const newSpeed = Math.max(0, speed-drop);
+        vel.multiplyScalar(newSpeed/(speed||1));
+      }
+      // ground accel
+      if(wish.lengthSq()>0){
+        const curSpeed = vel.dot(wish);
+        const addSpeed = MOVE.maxSpeed - curSpeed;
+        if(addSpeed>0){
+          const accelSpeed = Math.min(addSpeed, MOVE.accel*dt*MOVE.maxSpeed);
+          vel.addScaledVector(wish, accelSpeed);
+        }
+      }
     } else {
-      player.vel.x*=0.8; player.vel.z*=0.8;
+      // === AIR STRAFE (maxSpeed突破可能) ===
+      if(wish.lengthSq()>0){
+        const curSpeed = vel.dot(wish);
+        const addSpeed = MOVE.maxSpeed - curSpeed;
+        if(addSpeed>0){
+          const accelSpeed = Math.min(addSpeed, MOVE.airAccel*dt*MOVE.maxSpeed);
+          vel.addScaledVector(wish, accelSpeed);
+        }
+      }
     }
 
-    player.vel.y -= 15*dt;
-    if(keys.Space && player.onGround){ player.vel.y=6; player.onGround=false; }
+    player.vel.x = vel.x;
+    player.vel.z = vel.z;
+
+    // gravity & jump
+    player.vel.y -= MOVE.gravity*dt;
+    if(keys.Space && player.onGround){
+      player.vel.y = MOVE.jump;
+      player.onGround = false;
+    }
 
     player.pos.addScaledVector(player.vel,dt);
 
-    if(player.pos.y<1.6){ player.pos.y=1.6; player.vel.y=0; player.onGround=true; }
+    // ground collision
+    if(player.pos.y<1.6){
+      player.pos.y=1.6;
+      player.vel.y=0;
+      player.onGround=true;
+    }
+  }
   }
 
   camera.position.copy(player.pos);
@@ -176,3 +217,4 @@ addEventListener('resize',()=>{
 </script>
 </body>
 </html>
+
