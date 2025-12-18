@@ -18,6 +18,7 @@
     <div class="pill" id="score">Coins: 0 / 0</div>
     <div class="pill">WASD Move / Mouse Look / Space Jump</div>
     <div class="pill" id="fps">FPS:-</div>
+    <div class="pill" id="speed">Speed: 0</div>
   </div>
 
   <div id="msg">
@@ -133,6 +134,11 @@ let last=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min(0.05,(now-last)/1000); last=now;
+
+  // speed meter (horizontal)
+  const speedEl = document.getElementById('speed');
+  const horizSpeed = Math.hypot(player.vel.x, player.vel.z);
+  speedEl.textContent = `Speed: ${horizSpeed.toFixed(2)}`;
 
   if(started){
     // input direction (local)
