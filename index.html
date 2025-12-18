@@ -135,76 +135,79 @@ let last=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
 
-// duplicated legacy movement code removed
-
-requestAnimationFrame(loop);
-  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  const dt = Math.min(0.05,(now-last)/1000); 
+  last = now;
 
   if(started){
-    // === INPUT (WASD) ===
-    const ix = (keys.KeyD?1:0)-(keys.KeyA?1:0);
-    const iz = (keys.KeyS?1:0)-(keys.KeyW?1:0);
+    // --- INPUT VECTOR ---
+    const wish = new THREE.Vector3(
+      (keys.KeyD?1:0)-(keys.KeyA?1:0),
+      0,
+      (keys.KeyS?1:0)-(keys.KeyW?1:0)
+    );
 
-    // view-based wish direction
-    let wish = new THREE.Vector3(ix,0,iz);
-    if(wish.lengthSq()>0) wish.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+    if(wish.lengthSq()>0){
+      wish.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+    }
 
-    // current horizontal velocity
-    const vel = new THREE.Vector3(player.vel.x,0,player.vel.z);
-    const speed = vel.length();
-
+    // --- GROUND / AIR PHYSICS ---
     if(player.onGround){
-      // ground friction
-      if(speed>0 && wish.lengthSq()===0){
-        const drop = MOVE.friction * dt * MOVE.maxSpeed;
-        const newSpeed = Math.max(0, speed-drop);
-        vel.multiplyScalar(newSpeed/(speed||1));
-      }
       // ground accel
       if(wish.lengthSq()>0){
-        const curSpeed = vel.dot(wish);
-        const addSpeed = MOVE.maxSpeed - curSpeed;
-        if(addSpeed>0){
-          const accelSpeed = Math.min(addSpeed, MOVE.accel*dt*MOVE.maxSpeed);
-          vel.addScaledVector(wish, accelSpeed);
-        }
+        player.vel.x += wish.x * MOVE.accel * dt;
+        player.vel.z += wish.z * MOVE.accel * dt;
+      } else {
+        player.vel.x -= player.vel.x * MOVE.friction * dt;
+        player.vel.z -= player.vel.z * MOVE.friction * dt;
+      }
+
+      // clamp ground speed
+      const sp = Math.hypot(player.vel.x,player.vel.z);
+      if(sp > MOVE.maxSpeed){
+        const k = MOVE.maxSpeed / sp;
+        player.vel.x *= k;
+        player.vel.z *= k;
       }
     } else {
-      // === AIR STRAFE (maxSpeed突破可能) ===
+      // air-strafe (real)
       if(wish.lengthSq()>0){
-        const curSpeed = vel.dot(wish);
-        const addSpeed = MOVE.maxSpeed - curSpeed;
-        if(addSpeed>0){
-          const accelSpeed = Math.min(addSpeed, MOVE.airAccel*dt*MOVE.maxSpeed);
-          vel.addScaledVector(wish, accelSpeed);
+        const wishSpeed = MOVE.maxSpeed;
+        const curSpeed = player.vel.dot(wish);
+        const add = wishSpeed - curSpeed;
+        if(add > 0){
+          const accel = 18 * dt * wishSpeed;
+          const amt = Math.min(accel, add);
+          player.vel.addScaledVector(wish, amt);
         }
       }
     }
 
-    player.vel.x = vel.x;
-    player.vel.z = vel.z;
+    // gravity
+    player.vel.y -= MOVE.gravity * dt;
 
-    // gravity & jump
-    player.vel.y -= MOVE.gravity*dt;
+    // jump
     if(keys.Space && player.onGround){
       player.vel.y = MOVE.jump;
       player.onGround = false;
     }
 
-    player.pos.addScaledVector(player.vel,dt);
+    // integrate
+    player.pos.addScaledVector(player.vel, dt);
 
     // ground collision
-    if(player.pos.y<1.6){
-      player.pos.y=1.6;
-      player.vel.y=0;
-      player.onGround=true;
+    if(player.pos.y < 1.6){
+      player.pos.y = 1.6;
+      player.vel.y = 0;
+      player.onGround = true;
     }
-  }
+
+    // speed UI
+    document.getElementById('speed').textContent =
+      'Speed: ' + Math.hypot(player.vel.x,player.vel.z).toFixed(2);
   }
 
   camera.position.copy(player.pos);
   camera.rotation.set(pitch,yaw,0);
-
   renderer.render(scene,camera);
 }
 requestAnimationFrame(loop);
