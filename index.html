@@ -1,4 +1,4 @@
-<<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
@@ -124,7 +124,7 @@ addEventListener('keydown',e=>{if(e.code==='Space')start();});
 const MOVE = {
   maxSpeed: 7.0,      // 地上基準速度
   accel: 28.0,        // 地上加速
-  airAccel: 45.0,     // 空中加速（エアストレイフ）
+  airAccel: 150.0,    // 空中加速（角度依存）
   friction: 10.0,
   gravity: 18.0,
   jump: 6.5
@@ -169,15 +169,15 @@ function loop(now){
         player.vel.z *= k;
       }
     } else {
-      // air-strafe (real)
+      // === CS STYLE AIR STRAFE (angle dependent) ===
       if(wish.lengthSq()>0){
-        const wishSpeed = MOVE.maxSpeed;
-        const curSpeed = player.vel.dot(wish);
-        const add = wishSpeed - curSpeed;
-        if(add > 0){
-          const accel = 18 * dt * wishSpeed;
-          const amt = Math.min(accel, add);
-          player.vel.addScaledVector(wish, amt);
+        const wishDir = wish.clone().normalize();
+        const currentSpeed = player.vel.dot(wishDir);
+        const addSpeed = MOVE.maxSpeed - currentSpeed;
+        if(addSpeed > 0){
+          const accelSpeed = MOVE.airAccel * dt * MOVE.maxSpeed;
+          const finalAccel = Math.min(accelSpeed, addSpeed);
+          player.vel.addScaledVector(wishDir, finalAccel);
         }
       }
     }
@@ -220,4 +220,3 @@ addEventListener('resize',()=>{
 </script>
 </body>
 </html>
-
