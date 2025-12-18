@@ -3,285 +3,133 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>3D Coin Runner</title>
+  <title>3D Coin Runner (FPS FIXED)</title>
   <style>
     html,body{height:100%;margin:0;background:#080b14;color:#eaf0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif;overflow:hidden}
+    canvas{display:block;position:fixed;inset:0;z-index:0}
     #ui{position:fixed;left:14px;top:12px;display:flex;gap:10px;align-items:center;z-index:5}
     .pill{padding:8px 12px;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(255,255,255,.06);backdrop-filter: blur(8px)}
-    #msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:6;min-width:min(520px,92vw)}
-    #msg .card{padding:18px 18px;border:1px solid rgba(255,255,255,.14);border-radius:18px;background:rgba(255,255,255,.06);backdrop-filter: blur(10px);box-shadow:0 18px 70px rgba(0,0,0,.5)}
-    #msg h1{margin:0 0 6px;font-size:22px}
-    #msg p{margin:6px 0 0;opacity:.85;font-size:14px;line-height:1.5}
-    #msg kbd{padding:2px 8px;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(0,0,0,.25)}
-    canvas{display:block}
+    #msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:10}
+    #msg .card{padding:18px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14)}
   </style>
 </head>
 <body>
   <div id="ui">
     <div class="pill" id="score">Coins: 0 / 0</div>
-    <div class="pill">Move: WASD / ←↑↓→  Jump: Space  Look: Mouse</div>
-    <div class="pill" id="fps">FPS: -</div>
+    <div class="pill">WASD Move / Mouse Look / Space Jump</div>
+    <div class="pill" id="fps">FPS:-</div>
   </div>
 
   <div id="msg">
     <div class="card">
       <h1>3D Coin Runner</h1>
-      <p><kbd>Click</kbd> でマウスロック / <kbd>Space</kbd> でスタート<br>コインを全部集めたらクリア</p>
-      <p style="opacity:.7">Tip: ローカルでは http サーバーで開いてね（file:// 不可）</p>
+      <p>Click or Space to Start</p>
     </div>
   </div>
 
-  <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-    // ---------- basic ----------
-    const renderer = new THREE.WebGLRenderer({ antialias:true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true;
-    document.body.appendChild(renderer.domElement);
+// renderer
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x080b14, 18, 70);
+// scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080b14);
 
-    const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 220);
-    camera.position.set(0, 6.5, 10);
-    camera.rotation.order = 'YXZ'; // CS-style yaw/pitch
+// camera (FPS)
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 200);
+camera.rotation.order = 'YXZ';
 
-    // ---------- mouse look (CS-style) ----------
-    let yaw = 0;      // 左右
-    let pitch = 0;    // 上下
-    const SENS = 0.0022;
-    const PITCH_MIN = THREE.MathUtils.degToRad(-89);
-    const PITCH_MAX = THREE.MathUtils.degToRad( 89);
+// lights
+scene.add(new THREE.HemisphereLight(0xffffff,0x222233,1));
+const sun = new THREE.DirectionalLight(0xffffff,1);
+sun.position.set(5,10,5);
+scene.add(sun);
 
-    renderer.domElement.addEventListener('click', () => {
-      renderer.domElement.requestPointerLock();
-    });
+// ground
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(100,100),
+  new THREE.MeshStandardMaterial({color:0x101a33})
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
 
-    addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== renderer.domElement) return;
-      yaw   -= e.movementX * SENS;
-      pitch -= e.movementY * SENS;
-      pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch));
-    });
+// player (physics body only)
+const player = {
+  pos:new THREE.Vector3(0,1.6,5),
+  vel:new THREE.Vector3(),
+  onGround:false
+};
 
-    // ---------- lights ----------
-    const hemi = new THREE.HemisphereLight(0xbdd7ff, 0x1b1f33, 0.8);
-    scene.add(hemi);
+// input
+const keys = {};
+addEventListener('keydown',e=>keys[e.code]=true);
+addEventListener('keyup',e=>keys[e.code]=false);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(8, 14, 6);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048,2048);
-    sun.shadow.camera.left = -25;
-    sun.shadow.camera.right = 25;
-    sun.shadow.camera.top = 25;
-    sun.shadow.camera.bottom = -25;
-    scene.add(sun);
+// mouse look
+let yaw=0,pitch=0;
+const SENS=0.002;
+addEventListener('mousemove',e=>{
+  if(document.pointerLockElement!==renderer.domElement) return;
+  yaw   -= e.movementX*SENS;
+  pitch -= e.movementY*SENS;
+  pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01,pitch));
+});
 
-    // ---------- ground ----------
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80),
-      new THREE.MeshStandardMaterial({ color: 0x101a33, roughness: 1, metalness: 0 })
-    );
-    ground.rotation.x = -Math.PI/2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    const grid = new THREE.GridHelper(80, 40, 0x2a355a, 0x1a2444);
-    grid.position.y = 0.01;
-    grid.material.opacity = 0.25;
-    grid.material.transparent = true;
-    scene.add(grid);
-
-    // ---------- player ----------
-    const player = new THREE.Mesh(
-      new THREE.SphereGeometry(0.55, 28, 20),
-      new THREE.MeshStandardMaterial({ color: 0x78b4ff, roughness: 0.35, metalness: 0.05 })
-    );
-    player.castShadow = true;
-    player.position.set(0, 0.55, 0);
-    scene.add(player);
-
-    // ---------- obstacles ----------
-    const obstacles = [];
-    function addBox(x,z,w=2,h=1.2,d=2, color=0xffffff){
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(w,h,d),
-        new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.0 })
-      );
-      box.position.set(x, h/2, z);
-      box.castShadow = true;
-      box.receiveShadow = true;
-      scene.add(box);
-      obstacles.push(box);
-    }
-    for(let i=0;i<12;i++){
-      const x = (Math.random()*2-1)*10;
-      const z = -6 - i*4;
-      addBox(x, z, 2.2, 1.3, 2.2);
-    }
-    addBox(-8, -26, 3.5, 1.6, 3.5);
-    addBox( 9, -34, 3.2, 1.4, 3.2);
-
-    // ---------- coins ----------
-    const coins = [];
-    const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd36a, roughness: 0.25, metalness: 0.6 });
-    function spawnCoins(n=14){
-      for(const c of coins) scene.remove(c);
-      coins.length = 0;
-      for(let i=0;i<n;i++){
-        const c = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.12, 14, 26), coinMat);
-        const x = (Math.random()*2-1)*13;
-        const z = -4 - i*3.8 + (Math.random()*2-1)*0.8;
-        c.position.set(x, 1.05, z);
-        c.rotation.x = Math.PI/2;
-        c.castShadow = true;
-        scene.add(c);
-        coins.push(c);
-      }
-    }
-    spawnCoins(16);
-
-    // ---------- UI ----------
-    const scoreEl = document.getElementById("score");
-    const fpsEl = document.getElementById("fps");
-    const msgEl = document.getElementById("msg");
-    let collected = 0;
-    function refreshScore(){ scoreEl.textContent = `Coins: ${collected} / ${coins.length}`; }
-    refreshScore();
-
-    // ---------- input ----------
-    const keys = new Set();
-    addEventListener("keydown", (e)=>{
-      if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space","KeyW","KeyA","KeyS","KeyD"].includes(e.code)) e.preventDefault();
-      keys.add(e.code);
-      if(e.code === "Space"){
-        if(!state.running){ start(); return; }
-        if(state.onGround){ state.vy = 6.2; state.onGround = false; }
-      }
-    }, {passive:false});
-    addEventListener("keyup", (e)=> keys.delete(e.code));
-
-    // ---------- game state ----------
-    const state = { running:false, win:false, onGround:true, vy:0, speed:7.2, accel:18, vx:0, vz:0 };
-
-    function reset(){
-      collected = 0;
-      player.position.set(0,0.55,0);
-      state.vx = state.vz = state.vy = 0;
-      state.onGround = true;
-      state.running = false;
-      state.win = false;
-      spawnCoins(16);
-      refreshScore();
-      msgEl.style.display = "block";
-      msgEl.querySelector("h1").textContent = "3D Coin Runner";
-      msgEl.querySelector("p").innerHTML = "<kbd>Click</kbd> でマウスロック / <kbd>Space</kbd> でスタート";
-    }
-    function start(){ state.running = true; state.win = false; msgEl.style.display = "none"; }
-
-    // ---------- collisions ----------
-    function sphereBoxIntersect(sPos, sR, box){
-      const b = new THREE.Box3().setFromObject(box);
-      const p = sPos.clone();
-      const clamped = new THREE.Vector3(
-        Math.max(b.min.x, Math.min(p.x, b.max.x)),
-        Math.max(b.min.y, Math.min(p.y, b.max.y)),
-        Math.max(b.min.z, Math.min(p.z, b.max.z))
-      );
-      return clamped.distanceToSquared(p) <= (sR*sR);
-    }
-
-    // ---------- FPS camera (true first-person, CS-style) ----------
-function updateCamera(){
-  // camera == player (eye position)
-  camera.position.copy(player.position);
-  camera.position.y += 0.25; // eye height
-  camera.rotation.order = 'YXZ';
-  camera.rotation.x = pitch;
-  camera.rotation.y = yaw;
-  camera.rotation.z = 0;
+// start
+let started=false;
+function start(){
+  if(started) return;
+  started=true;
+  document.getElementById('msg').style.display='none';
+  renderer.domElement.requestPointerLock();
 }
+addEventListener('click',start);
+addEventListener('keydown',e=>{if(e.code==='Space')start();});
 
-// movement basis from yaw (CS-style)
-function getMoveBasis(){
-  const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).negate();
-  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
-  return { forward, right };
-}
+// loop
+let last=performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
 
-    // ---------- loop ----------
-    let last = performance.now();
-    let fpsAccum = 0, fpsCount = 0, fpsLast = performance.now();
-
-    function step(now){
-      const dt = Math.min(0.033, (now-last)/1000);
-      last = now;
-
-      fpsAccum += 1/dt; fpsCount++;
-      if(now - fpsLast > 350){ fpsEl.textContent = `FPS: ${Math.round(fpsAccum/fpsCount)}`; fpsAccum = 0; fpsCount = 0; fpsLast = now; }
-
-      for(const c of coins){ c.rotation.z += dt*3.2; c.position.y = 1.05 + Math.sin(now*0.003 + c.position.x)*0.08; }
-
-      if(state.running && !state.win){
-        const up = keys.has("ArrowUp") || keys.has("KeyW");
-        const down = keys.has("ArrowDown") || keys.has("KeyS");
-        const left = keys.has("ArrowLeft") || keys.has("KeyA");
-        const right = keys.has("ArrowRight") || keys.has("KeyD");
-        const { forward, right: rvec } = getMoveBasis();
-        const wish = new THREE.Vector3();
-        if(up) wish.add(forward);
-        if(down) wish.sub(forward);
-        if(left) wish.sub(rvec);
-        if(right) wish.add(rvec);
-        if(wish.lengthSq() > 0) wish.normalize();
-
-        const targetVx = wish.x * state.speed;
-        const targetVz = wish.z * state.speed;
-
-        state.vx += (targetVx - state.vx) * Math.min(1, state.accel*dt);
-        state.vz += (targetVz - state.vz) * Math.min(1, state.accel*dt);
-
-        player.position.x += state.vx * dt;
-        player.position.z += state.vz * dt;
-        player.position.x = Math.max(-18, Math.min(18, player.position.x));
-        player.position.z = Math.max(-70, Math.min(12, player.position.z));
-        state.vy += -16.5 * dt;
-        player.position.y += state.vy * dt;
-        const radius = 0.55;
-        if(player.position.y <= radius){ player.position.y = radius; state.vy = 0; state.onGround = true; }
-        for(const b of obstacles){
-          if(sphereBoxIntersect(player.position, radius, b)){
-            const dx = player.position.x - b.position.x;
-            const dz = player.position.z - b.position.z;
-            const len = Math.max(0.001, Math.hypot(dx,dz));
-            player.position.x += (dx/len) * 0.25;
-            player.position.z += (dz/len) * 0.25;
-            state.vx *= 0.35; state.vz *= 0.35;
-          }
-        }
-        for(let i=coins.length-1;i>=0;i--){
-          const c = coins[i];
-          if(c.position.distanceTo(player.position) < 0.95){ scene.remove(c); coins.splice(i,1); collected++; refreshScore(); }
-        }
-        if(coins.length === 0){ state.win = true; state.running = false; msgEl.style.display = "block"; msgEl.querySelector("h1").textContent = "CLEAR ✨"; msgEl.querySelector("p").innerHTML = "コイン回収コンプリート<br><kbd>Space</kbd> でリトライ"; }
-      }
-
-      updateCamera();
-      renderer.render(scene, camera);
-      requestAnimationFrame(step);
+  if(started){
+    const dir = new THREE.Vector3(
+      (keys.KeyD?1:0)-(keys.KeyA?1:0),
+      0,
+      (keys.KeyS?1:0)-(keys.KeyW?1:0)
+    );
+    if(dir.lengthSq()>0){
+      dir.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+      player.vel.x = dir.x*6;
+      player.vel.z = dir.z*6;
+    } else {
+      player.vel.x*=0.8; player.vel.z*=0.8;
     }
-    requestAnimationFrame(step);
 
-    addEventListener("resize", ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+    player.vel.y -= 15*dt;
+    if(keys.Space && player.onGround){ player.vel.y=6; player.onGround=false; }
 
-    // ---- minimal runtime checks (pseudo-tests) ----
-console.assert(typeof THREE !== 'undefined', 'THREE should be loaded');
-console.assert(renderer.domElement instanceof HTMLCanvasElement, 'Canvas exists');
-console.assert(Math.abs(PITCH_MAX - THREE.MathUtils.degToRad(89)) < 1e-6, 'Pitch limit should be ±89deg');
-console.assert(typeof getMoveBasis === 'function', 'FPS movement basis exists');
+    player.pos.addScaledVector(player.vel,dt);
 
+    if(player.pos.y<1.6){ player.pos.y=1.6; player.vel.y=0; player.onGround=true; }
+  }
+
+  camera.position.copy(player.pos);
+  camera.rotation.set(pitch,yaw,0);
+
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
 </html>
-
