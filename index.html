@@ -122,10 +122,10 @@ addEventListener('keydown',e=>{if(e.code==='Space')start();});
 
 // movement params (CS / Quake style)
 const MOVE = {
-  maxSpeed: 7.0,      // 地上基準速度
-  accel: 28.0,        // 地上加速
-  airAccel: 150.0,    // 空中加速（角度依存）
-  friction: 10.0,
+  maxSpeed: 500.0,     // 理論上の上限（ほぼ無制限）
+  accel: 35.0,         // 地上加速
+  airAccel: 120.0,     // 空中加速（超強化）
+  friction: 6.0,
   gravity: 18.0,
   jump: 6.5
 };
@@ -160,13 +160,16 @@ function loop(now){
         player.vel.x -= player.vel.x * MOVE.friction * dt;
         player.vel.z -= player.vel.z * MOVE.friction * dt;
       }
-
-      // clamp ground speed
-      const sp = Math.hypot(player.vel.x,player.vel.z);
-      if(sp > MOVE.maxSpeed){
-        const k = MOVE.maxSpeed / sp;
-        player.vel.x *= k;
-        player.vel.z *= k;
+      // ※ 地上では速度を落としすぎない（BH維持）
+    } else {
+      // CS / Quake 本物エアストレイフ（角度依存・上限なし）
+      if(wish.lengthSq()>0){
+        const wishDir = wish.clone().normalize();
+        const currentSpeed = player.vel.dot(wishDir);
+        const addSpeed = MOVE.airAccel * dt;
+        if(addSpeed > 0){
+          player.vel.addScaledVector(wishDir, addSpeed);
+        }
       }
     } else {
       // === CS STYLE AIR STRAFE (angle dependent) ===
