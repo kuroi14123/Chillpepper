@@ -119,10 +119,68 @@ function start(){
 addEventListener('click',start);
 addEventListener('keydown',e=>{if(e.code==='Space')start();});
 
+// movement params (CSっぽい加速)
+const MOVE = {
+  maxSpeed: 7.0,
+  accel: 28.0,
+  friction: 10.0,
+  gravity: 18.0,
+  jump: 6.5
+};
+
 // loop
 let last=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+
+  if(started){
+    // input direction (local)
+    const ix = (keys.KeyD?1:0)-(keys.KeyA?1:0);
+    const iz = (keys.KeyS?1:0)-(keys.KeyW?1:0);
+
+    const wish = new THREE.Vector3(ix,0,iz);
+    if(wish.lengthSq()>0){
+      wish.normalize();
+      wish.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+
+      // accelerate (CS style)
+      const curSpeed = player.vel.dot(wish);
+      const addSpeed = MOVE.maxSpeed - curSpeed;
+      if(addSpeed > 0){
+        const accelSpeed = Math.min(addSpeed, MOVE.accel * dt * MOVE.maxSpeed);
+        player.vel.addScaledVector(wish, accelSpeed);
+      }
+    } else {
+      // friction
+      const speed = player.vel.length();
+      if(speed > 0){
+        const drop = speed * MOVE.friction * dt;
+        const newSpeed = Math.max(0, speed - drop);
+        player.vel.multiplyScalar(newSpeed / speed);
+      }
+    }
+
+    // gravity & jump
+    player.vel.y -= MOVE.gravity * dt;
+    if(keys.Space && player.onGround){ player.vel.y = MOVE.jump; player.onGround=false; }
+
+    player.pos.addScaledVector(player.vel, dt);
+
+    // ground collision
+    if(player.pos.y < 1.6){
+      player.pos.y = 1.6;
+      player.vel.y = 0;
+      player.onGround = true;
+    }
+  }
+
+  camera.position.copy(player.pos);
+  camera.rotation.set(pitch,yaw,0);
+
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
   const dt=Math.min(0.05,(now-last)/1000); last=now;
 
   if(started){
@@ -162,3 +220,4 @@ addEventListener('resize',()=>{
 </script>
 </body>
 </html>
+
