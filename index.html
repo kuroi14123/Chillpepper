@@ -91,7 +91,7 @@ for(let i=0;i<20;i++){
 const player = {
   pos:new THREE.Vector3(0,1.6,5),
   vel:new THREE.Vector3(),
-  onGround:false
+  onGround:true // ← 初期状態で地面に立たせる
 };
 
 // input
@@ -113,9 +113,11 @@ addEventListener('mousemove',e=>{
 let started=false;
 function start(){
   if(started) return;
-  started=true;
-  document.getElementById('msg').style.display='none';
+  started = true;
+  document.getElementById('msg').style.display = 'none';
   renderer.domElement.requestPointerLock();
+  // 念のため速度リセット
+  player.vel.set(0,0,0);
 }
 addEventListener('click',start);
 addEventListener('keydown',e=>{if(e.code==='Space')start();});
@@ -141,9 +143,9 @@ function loop(now){
   if(started){
     // --- INPUT VECTOR ---
     const wish = new THREE.Vector3(
-      (keys.KeyD?1:0)-(keys.KeyA?1:0),
+      (keys['KeyD']?1:0)-(keys['KeyA']?1:0),
       0,
-      (keys.KeyS?1:0)-(keys.KeyW?1:0)
+      (keys['KeyS']?1:0)-(keys['KeyW']?1:0)
     );
 
     if(wish.lengthSq()>0){
